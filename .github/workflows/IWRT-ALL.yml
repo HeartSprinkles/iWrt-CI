@@ -1,0 +1,119 @@
+name: immortalwrt-mt798x # CI计划
+
+on:
+  workflow_dispatch: # 只允许手动触发此工作流
+
+env:
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+permissions: write-all #CI权限
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # 使用Ubuntu镜像
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@main
+
+      - name: 准备编译环境
+        env:
+          DEBIAN_FRONTEND: noninteractive # 设置环境变量避免安装过程中出现交互式提示
+        run: |
+          sudo apt-get -yqq purge firefox
+          sudo apt-get -yqq update
+          sudo apt-get -yqq full-upgrade
+
+          chmod +x $GITHUB_WORKSPACE/Scripts/Clean.sh && $GITHUB_WORKSPACE/Scripts/Clean.sh
+          sudo rm -rf /usr/share/dotnet               # 清理各种缓存目录
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/hostedtoolcache
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/share/chromium
+          sudo rm -rf /usr/local/lib/node_modules
+
+          sudo apt-get -yqq install dos2unix python3-netifaces libfuse-dev
+          sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+          sudo systemctl daemon-reload
+          sudo timedatectl set-timezone "Asia/Shanghai"
+
+          sudo mkdir -p /mnt/build_iwrt
+          sudo chown $USER:$USER /mnt/build_iwrt
+          sudo ln -s /mnt/build_iwrt $GITHUB_WORKSPACE/iwrt
+
+      - name: 克隆源码
+        uses: actions/checkout@main
+        with:
+          repository: VIKINGYFY/immortalwrt
+          ref: owrt
+          path: iwrt
+          fetch-depth: 1
+
+      - name: 脚本预处理
+        run: |
+
+          find ./ -maxdepth 3 -type f -iregex ".*\(txt\|sh\)$" -exec dos2unix {} \; -exec chmod +x {} \;
+          df -h
+
+      - name: 更新订阅源
+        run: |
+
+          ./scripts/feeds update -a  # 更新所有feeds
+          ./scripts/feeds install -a  # 安装所有feeds中的软件包
+
+        working-directory: iwrt
+
+      - name: 自定义软件包
+        run: |
+
+          $GITHUB_WORKSPACE/Scripts/Packages.sh
+          $GITHUB_WORKSPACE/Scripts/Handles.sh
+
+        working-directory: iwrt/package
+
+      - name: 自定义配置文件
+        run: |
+
+          cat $GITHUB_WORKSPACE/Config/GENERAL.txt >> .config
+
+          $GITHUB_WORKSPACE/Scripts/Settings.sh
+
+          make defconfig -j$(nproc) && make clean -j$(nproc)
+
+        working-directory: iwrt
+
+      - name: 下载依赖包
+        run: |
+
+          make download -j$(nproc)
+
+        working-directory: iwrt
+
+      - name: 编译固件
+        run: |
+
+          make -j$(nproc) || make -j1 V=s                             # 并行编译
+
+        working-directory: iwrt
+
+      - name: 打包固件
+        run: |
+
+          cd ./iwrt/ && mkdir ./upload/
+          find ./bin/targets/ -iregex ".*\(bl2.bin\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
+          find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
+
+          make clean -j$(nproc)
+
+      - name: 发布固件
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v$(date +'%y.%-m.%-d')-$(git rev-parse --short=7 HEAD) # 格式：v25.8.13-fffffff
+          name: Release $(date +'%y.%-m.%-d')-$(git rev-parse --short=7 HEAD) # 格式：Release 25.8.13-fffffff
+          body: |
+            H3C nx30pro 闭源固件
+            源码: VIKINGYFY/immortalwrt
+            分支: owrt
+            提交: $(git log -1 --pretty=format:'%h')
+            内核版本: $(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)
+          files: $GITHUB_WORKSPACE/iwrt/upload/*.*

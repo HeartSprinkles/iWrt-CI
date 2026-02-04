@@ -1,0 +1,1 @@
+immoralwrt-mt798x自动编译
