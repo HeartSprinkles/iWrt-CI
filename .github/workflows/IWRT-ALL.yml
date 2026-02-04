@@ -22,9 +22,8 @@ jobs:
           sudo apt-get -yqq purge firefox
           sudo apt-get -yqq update
           sudo apt-get -yqq full-upgrade
-
-          sudo apt-get autoremove -y --purge
-          sudo apt-get clean
+          sudo apt-get -yqq autoclean
+          sudo apt-get -yqq clean
 
           sudo apt-get -yqq install dos2unix python3-netifaces libfuse-dev
           sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
