@@ -23,14 +23,8 @@ jobs:
           sudo apt-get -yqq update
           sudo apt-get -yqq full-upgrade
 
-          chmod +x $GITHUB_WORKSPACE/Scripts/Clean.sh && $GITHUB_WORKSPACE/Scripts/Clean.sh
-          sudo rm -rf /usr/share/dotnet               # 清理各种缓存目录
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/hostedtoolcache
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /usr/local/share/chromium
-          sudo rm -rf /usr/local/lib/node_modules
+          sudo apt-get autoremove -y --purge
+          sudo apt-get clean
 
           sudo apt-get -yqq install dos2unix python3-netifaces libfuse-dev
           sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
