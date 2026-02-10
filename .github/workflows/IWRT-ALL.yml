@@ -37,16 +37,10 @@ jobs:
       - name: 克隆源码
         uses: actions/checkout@main
         with:
-          repository: VIKINGYFY/immortalwrt
-          ref: owrt
+          repository: chasey-dev/immortalwrt-mt798x-rebase
+          ref: 25.12-dev
           path: iwrt
-          fetch-depth: 1
-
-      - name: 脚本预处理
-        run: |
-
-          find ./ -maxdepth 3 -type f -iregex ".*\(txt\|sh\)$" -exec dos2unix {} \; -exec chmod +x {} \;
-          df -h
+          filter: blob:none
 
       - name: 更新订阅源
         run: |
@@ -54,24 +48,10 @@ jobs:
           ./scripts/feeds update -a  # 更新所有feeds
           ./scripts/feeds install -a  # 安装所有feeds中的软件包
 
-        working-directory: iwrt
-
-      - name: 自定义软件包
-        run: |
-
-          $GITHUB_WORKSPACE/Scripts/Packages.sh
-          $GITHUB_WORKSPACE/Scripts/Handles.sh
-
-        working-directory: iwrt/package
-
       - name: 自定义配置文件
         run: |
 
-          cat $GITHUB_WORKSPACE/Config/GENERAL.txt >> .config
-
-          $GITHUB_WORKSPACE/Scripts/Settings.sh
-
-          make defconfig -j$(nproc) && make clean -j$(nproc)
+          cat $GITHUB_WORKSPACE/Config/.config >> .config
 
         working-directory: iwrt
 
