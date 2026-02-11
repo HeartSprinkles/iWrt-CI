@@ -36,6 +36,34 @@ jobs:
           path: iwrt
           filter: blob:none
 
+      - name: 获取 iwrt 仓库短 SHA
+        id: iwrt_sha
+        run: |
+
+          echo "iwrt_sha=$(cd iwrt && git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: 缓存: dl、staging_dir 和 build_dir
+        uses: actions/cache@v4
+        with:
+          path: |
+
+            iwrt/dl
+            iwrt/staging_dir
+            iwrt/build_dir
+          key: ${{ runner.os }}-immortalwrt-dl-staging-${{ steps.iwrt_sha.outputs.iwrt_sha }}-${{ hashFiles('iwrt/.config', 'iwrt/feeds.conf*', 'Config/.config') }}
+          restore-keys: |
+            ${{ runner.os }}-immortalwrt-dl-staging-${{ steps.iwrt_sha.outputs.iwrt_sha }}-
+
+      - name: 缓存: ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+          
+            ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ steps.iwrt_sha.outputs.iwrt_sha }}-${{ hashFiles('iwrt/.config') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-${{ steps.iwrt_sha.outputs.iwrt_sha }}-
+
       - name: 更新订阅源
         run: |
 
