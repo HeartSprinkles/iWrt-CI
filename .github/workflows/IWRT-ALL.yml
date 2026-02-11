@@ -71,15 +71,6 @@ jobs:
 
         working-directory: iwrt
 
-      - name: 打包固件
-        run: |
-
-          cd ./iwrt/ && mkdir ./upload/
-          find ./bin/targets/ -iregex ".*\(bl2.bin\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
-          find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
-
-          make clean -j$(nproc)
-
       - name: 发布固件
         uses: softprops/action-gh-release@v2
         with:
@@ -91,4 +82,4 @@ jobs:
             分支: owrt
             提交: $(git log -1 --pretty=format:'%h')
             内核版本: $(find $GITHUB_WORKSPACE/iwrt/bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)
-          files: $GITHUB_WORKSPACE/iwrt/upload/*.*
+          files: $GITHUB_WORKSPACE/iwrt/bin/targets/*.*
