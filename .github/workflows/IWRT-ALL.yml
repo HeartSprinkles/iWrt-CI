@@ -3,9 +3,6 @@ name: immortalwrt-mt798x
 on:
   workflow_dispatch:
 
-env:
-  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-
 permissions: write-all
 
 jobs:
@@ -19,14 +16,13 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          echo "===== 清理环境 ====="
+
           sudo apt-get -yqq purge firefox
           sudo apt-get -yqq update
           sudo apt-get -yqq full-upgrade
           sudo apt-get -yqq autoclean
           sudo apt-get -yqq clean
 
-          echo "===== 安装依赖 ====="
           sudo apt-get -yqq install dos2unix python3-netifaces libfuse-dev
           sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
           sudo systemctl daemon-reload
@@ -42,82 +38,57 @@ jobs:
 
       - name: 更新订阅源
         run: |
+
           cd ./iwrt
-          echo "===== 更新feeds ====="
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
       - name: 自定义配置文件
         run: |
-          echo "===== 追加配置 ====="
-          cat $GITHUB_WORKSPACE/Config/.config >> ./iwrt/.config
 
-      - name: 下载依赖包
+          cat $GITHUB_WORKSPACE/Config/.config >> ./iwrt/.config
+          make defconfig -j$(nproc) && make clean -j$(nproc)
+
+      - name: 下载依赖
         run: |
-          echo "===== 下载依赖 ====="
+
           cd ./iwrt
           make download -j$(nproc)
 
       - name: 编译固件
         run: |
-          echo "===== 开始编译 ====="
+
           cd ./iwrt
           make -j$(nproc) || make -j1 V=s
 
-      - name: 调试目录结构
+      - name: 打包固件
         run: |
-          echo "===== 检查编译产物目录 ====="
-          ARTIFACT_DIR="./iwrt/bin/targets"
-          
-          if [ -d "$ARTIFACT_DIR" ]; then
-            echo "编译产物目录存在: $ARTIFACT_DIR"
-            ls -la "$ARTIFACT_DIR"
-            echo ""
-            echo "===== 查找固件文件 ====="
-            find "$ARTIFACT_DIR" -type f \( -name "*.bin" -o -name "*.trx" -o -name "*.img" \) 2>/dev/null | head -20
-          else
-            echo "错误: 编译产物目录不存在: $ARTIFACT_DIR"
-            echo "===== 查找所有可能的位置 ====="
-            find ./iwrt -name "bin" -type d 2>/dev/null
-            find ./iwrt -name "*.bin" 2>/dev/null | head -10
-          fi
 
-      - name: 获取版本信息
-        id: version
+          cd ./iwrt/ && mkdir ./upload/
+          find ./bin/targets/ -iregex ".*\(bl2\.bin\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
+          find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
+
+      - name: 构建发布信息
+        id: meta
         run: |
-          cd ./iwrt
-          GIT_HASH=$(git rev-parse --short=7 HEAD)
-          TAG_NAME="v$(date +'%y.%-m.%-d')-${GIT_HASH}"
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "git_hash=$GIT_HASH" >> $GITHUB_OUTPUT
-          
-          # 获取内核版本
-          MANIFEST=$(find ./iwrt/bin/targets -type f -name "*.manifest" 2>/dev/null | head -1)
-          if [ -n "$MANIFEST" ]; then
-            KERNEL_VERSION=$(grep -oP '^kernel - \K[\d\.]+' "$MANIFEST")
-            echo "kernel_version=$KERNEL_VERSION" >> $GITHUB_OUTPUT
-          else
-            echo "kernel_version=unknown" >> $GITHUB_OUTPUT
-          fi
+          BUILD_DATE=$(date +'%Y%m%d')
+          SHORT_SHA=${GITHUB_SHA::7}
+          TAG_NAME="build-${BUILD_DATE}-${SHORT_SHA}"
+          RELEASE_NAME="${BUILD_DATE} (${SHORT_SHA})"
+          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "release=${RELEASE_NAME}" >> $GITHUB_OUTPUT
 
       - name: 发布固件
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag_name }}
-          name: Release $(date +'%y.%-m.%-d')-${{ steps.version.outputs.git_hash }}
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.release }}
           body: |
-            H3C nx30pro 闭源固件
 
             **编译信息**
             - 源码: hasey-dev/immortalwrt-mt798x-rebase
             - 分支: 25.12-dev
-            - 提交: ${{ steps.version.outputs.git_hash }}
-            - 内核版本: ${{ steps.version.outputs.kernel_version }}
 
-            **注意事项**
-            - 请根据设备型号选择对应的固件
-            - 建议先备份原固件后再刷写
-            - 刷机有风险，请谨慎操作
-          files: ./iwrt/bin/targets/*.*
+          files: ${{ github.workspace }}/iwrt/upload/*.*
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
