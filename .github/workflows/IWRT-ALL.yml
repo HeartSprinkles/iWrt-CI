@@ -42,7 +42,7 @@ jobs:
 
           echo "iwrt_sha=$(cd iwrt && git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: 缓存: dl、staging_dir 和 build_dir
+      - name: 缓存dl、staging_dir 和 build_dir
         uses: actions/cache@v4
         with:
           path: |
@@ -54,7 +54,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-immortalwrt-dl-staging-${{ steps.iwrt_sha.outputs.iwrt_sha }}-
 
-      - name: 缓存: ccache
+      - name: 缓存ccache
         uses: actions/cache@v4
         with:
           path: |
