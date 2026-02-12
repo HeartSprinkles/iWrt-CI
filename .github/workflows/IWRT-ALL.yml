@@ -42,7 +42,7 @@ jobs:
 
           echo "iwrt_sha=$(cd iwrt && git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: 缓存dl、staging_dir 和 build_dir
+      - name: 缓存下载编译中间文件
         uses: actions/cache@v4
         with:
           path: |
@@ -54,7 +54,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-immortalwrt-dl-staging-${{ steps.iwrt_sha.outputs.iwrt_sha }}-
 
-      - name: 缓存ccache
+      - name: 缓存 ccache
         uses: actions/cache@v4
         with:
           path: |
@@ -74,7 +74,7 @@ jobs:
       - name: 自定义配置文件
         run: |
 
-          cat $GITHUB_WORKSPACE/Config/diffconfig >> ./iwrt/.config
+          cat ./Config/diffconfig >> ./iwrt/.config
           make defconfig -j$(nproc)
 
       - name: 下载依赖
