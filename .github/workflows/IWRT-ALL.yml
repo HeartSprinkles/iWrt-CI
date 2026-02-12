@@ -36,6 +36,10 @@ jobs:
           path: iwrt
           filter: blob:none
 
+      - name: Check Scripts
+        run: |
+          find ./ -maxdepth 3 -type f -iregex ".*\(txt\|sh\)$" -exec dos2unix {} \; -exec chmod +x {} \;
+
       - name: 获取 iwrt 仓库短 SHA
         id: iwrt_sha
         run: |
@@ -50,6 +54,7 @@ jobs:
             iwrt/dl
             iwrt/staging_dir
             iwrt/build_dir
+
           key: ${{ runner.os }}-immortalwrt-dl-staging-${{ steps.iwrt_sha.outputs.iwrt_sha }}-${{ hashFiles('iwrt/.config', 'iwrt/feeds.conf*', 'Config/.config') }}
           restore-keys: |
             ${{ runner.os }}-immortalwrt-dl-staging-${{ steps.iwrt_sha.outputs.iwrt_sha }}-
@@ -60,6 +65,7 @@ jobs:
           path: |
           
             ~/.ccache
+
           key: ${{ runner.os }}-ccache-${{ steps.iwrt_sha.outputs.iwrt_sha }}-${{ hashFiles('iwrt/.config') }}
           restore-keys: |
             ${{ runner.os }}-ccache-${{ steps.iwrt_sha.outputs.iwrt_sha }}-
@@ -76,6 +82,12 @@ jobs:
 
           cat ./Config/diffconfig >> ./iwrt/.config
           make -C iwrt defconfig -j$(nproc)
+
+      - name: 安装和配置自定义包
+        run: |
+
+          cd ./iwrt//package/
+          ./Scripts/Packages.sh
 
       - name: 下载依赖
         run: |
