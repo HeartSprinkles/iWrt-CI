@@ -89,11 +89,11 @@ jobs:
           cat ./Config/diffconfig >> ./iwrt/.config
           make -C iwrt defconfig -j$(nproc)
 
-      - name: 安装和配置自定义包
-        run: |
-
-          cd ./iwrt/package/
-          $GITHUB_WORKSPACE/Scripts/Packages.sh
+#      - name: 安装和配置自定义包
+#        run: |
+#
+#          cd ./iwrt/package/
+#          $GITHUB_WORKSPACE/Scripts/Packages.sh
 
       - name: 下载依赖
         run: |
