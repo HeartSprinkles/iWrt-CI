@@ -1,67 +1,24 @@
-name: Cleanup old workflow runs and releases
+name: Auto-Clean
 
 on:
+  #自动清理：每天早上4点
   schedule:
-    - cron: '0 3 * * *' # 每天 UTC 03:00 运行
-  workflow_dispatch: {}
+    - cron: 0 20 * * *
+  #手动清理
+  workflow_dispatch:
 
-permissions:
-  actions: write
-  contents: write
+permissions: write-all
 
 jobs:
-  cleanup:
+  auto_clean:
     runs-on: ubuntu-latest
     steps:
-      - name: Simple cleanup of runs and releases older than 7 days
-        uses: actions/github-script@v6
+      - name: Delete old Releases and Workflows
+        uses: ophub/delete-releases-workflows@main
         with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const weekMs = 7 * 24 * 60 * 60 * 1000;
-            const cutoff = new Date(Date.now() - weekMs);
-
-            // Delete workflow runs for the repository older than 7 days
-            try {
-              const runsRes = await github.rest.actions.listWorkflowRunsForRepo({ owner, repo, per_page: 100 });
-              for (const run of (runsRes.data.workflow_runs || [])) {
-                try {
-                  if (new Date(run.created_at) < cutoff) {
-                    await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
-                    console.log(`Deleted workflow run ${run.id} created_at=${run.created_at}`);
-                  }
-                } catch (e) {
-                  console.log(`Failed to delete run ${run.id}: ${e}`);
-                }
-              }
-            } catch (e) {
-              console.log(`Error listing workflow runs: ${e}`);
-            }
-
-            // Delete releases older than 7 days (and attempt to remove tag refs)
-            try {
-              const relRes = await github.rest.repos.listReleases({ owner, repo, per_page: 100 });
-              for (const r of (relRes.data || [])) {
-                try {
-                  if (new Date(r.created_at) < cutoff) {
-                    await github.rest.repos.deleteRelease({ owner, repo, release_id: r.id });
-                    console.log(`Deleted release ${r.id} (${r.tag_name}) created_at=${r.created_at}`);
-                    if (r.tag_name) {
-                      try {
-                        await github.rest.git.deleteRef({ owner, repo, ref: `tags/${r.tag_name}` });
-                        console.log(`Deleted tag ref tags/${r.tag_name}`);
-                      } catch (e) {
-                        console.log(`Failed to delete tag ref tags/${r.tag_name}: ${e}`);
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.log(`Failed to delete release ${r.id}: ${e}`);
-                }
-              }
-            } catch (e) {
-              console.log(`Error listing releases: ${e}`);
-            }
-
-            console.log('Simple cleanup completed');
+          gh_token: ${{secrets.GITHUB_TOKEN}}
+          delete_releases: true
+          releases_keep_latest: 1
+          delete_tags: true
+          delete_workflows: true
+          workflows_keep_day: 7
