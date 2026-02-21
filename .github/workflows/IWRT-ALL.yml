@@ -3,13 +3,14 @@ name: immortalwrt-mt798x
 on:
   workflow_dispatch:
 
-permissions: write-all
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出仓库
+      - name: 检出工作流仓库
         uses: actions/checkout@main
 
       - name: 准备编译环境
@@ -40,48 +41,11 @@ jobs:
         run: |
           find ./ -maxdepth 3 -type f -iregex ".*\(txt\|sh\)$" -exec dos2unix {} \; -exec chmod +x {} \;
 
-      - name: 获取 iwrt 仓库短 SHA
-        id: iwrt_sha
-        run: |
-
-          echo "iwrt_sha=$(cd iwrt && git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: 缓存下载编译中间文件
-        uses: actions/cache@v4
-        with:
-          path: |
-
-            iwrt/dl
-            iwrt/staging_dir
-            iwrt/build_dir
-
-          key: ${{ runner.os }}-immortalwrt-dl-staging-${{ steps.iwrt_sha.outputs.iwrt_sha }}-${{ hashFiles('iwrt/.config', 'iwrt/feeds.conf*', 'Config/.config') }}
-          restore-keys: |
-            ${{ runner.os }}-immortalwrt-dl-staging-${{ steps.iwrt_sha.outputs.iwrt_sha }}-
-
-      - name: 缓存 ccache
-        uses: actions/cache@v4
-        with:
-          path: |
-          
-            ~/.ccache
-
-          key: ${{ runner.os }}-ccache-${{ steps.iwrt_sha.outputs.iwrt_sha }}-${{ hashFiles('iwrt/.config') }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-${{ steps.iwrt_sha.outputs.iwrt_sha }}-
-
       - name: 更新订阅源
         run: |
 
-          cd ./iwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: 添加UCI配置
-        run: |
-
-          mkdir -p ./iwrt/files/etc/uci-defaults
-          cp -f ./Scripts/99-custom ./iwrt/files/etc/uci-defaults/99-custom
+          ./iwrt/scripts/feeds update -a
+          ./iwrt/scripts/feeds install -a
 
       - name: 自定义配置文件
         run: |
@@ -89,52 +53,79 @@ jobs:
           cat ./Config/diffconfig >> ./iwrt/.config
           make -C iwrt defconfig -j$(nproc)
 
-#      - name: 安装和配置自定义包
-#        run: |
-#
-#          cd ./iwrt/package/
-#          $GITHUB_WORKSPACE/Scripts/Packages.sh
+      - name: 缓存 dl 目录
+        uses: actions/cache@v4
+        with:
+          path: iwrt/dl
+          key: ${{ runner.os }}-dl-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-dl-
+
+      - name: 缓存 ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('iwrt/.config', 'iwrt/toolchain/*') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: 配置 ccache
+        run: |
+            ccache -M 3G    # 设置最大3GB（根据项目需求调整）
+            ccache -s       # 打印当前统计信息
 
       - name: 下载依赖
         run: |
 
-          cd ./iwrt
-          make download -j$(nproc)
+          make -C iwrt download -j$(nproc)
 
       - name: 编译固件
         run: |
 
-          cd ./iwrt
-          make -j$(nproc) || make -j1 V=s
-
-      - name: 打包固件
-        run: |
-
-          cd ./iwrt/ && mkdir ./upload/
-          find ./bin/targets/ -iregex ".*\(bl2\.bin\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
-          find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
+          make -C iwrt -j$(nproc) || make -C iwrt -j1 V=s
 
       - name: 构建发布信息
         id: meta
         run: |
-          BUILD_DATE=$(date +'%Y%m%d')
-          SHORT_SHA=${GITHUB_SHA::7}
-          TAG_NAME="build-${BUILD_DATE}-${SHORT_SHA}"
-          RELEASE_NAME="${BUILD_DATE} (${SHORT_SHA})"
-          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
-          echo "release=${RELEASE_NAME}" >> $GITHUB_OUTPUT
+          GIT_HASH=$(git -C iwrt rev-parse --short=7 HEAD)
+          DATE_STR=$(date +'%y.%-m.%-d')
+          TAG_NAME="v${DATE_STR}-${GIT_HASH}"
+          RELEASE_NAME="Release $DATE_STR"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "git_hash=$GIT_HASH" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+
+          MANIFEST=$(find ./iwrt/bin/targets -type f -name "*.manifest" 2>/dev/null | head -1)
+          if [ -n "$MANIFEST" ]; then
+            KERNEL_VERSION=$(grep -oP '^kernel - \K[\d\.]+' "$MANIFEST")
+            echo "kernel_version=$KERNEL_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "kernel_version=unknown" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 生成发布文件列表
+        id: filelist
+        run: |
+          cd iwrt
+          # 收集所有固件文件，排除不需要的中间文件
+          find bin/targets -type f \
+            ! -path "*/packages/*" \
+            ! -name "*.json" \
+            ! -name "bl2.bin" \
+            > filelist.txt
+          # 输出列表文件的绝对路径供后续步骤使用
+          echo "filelist_path=$(pwd)/filelist.txt" >> $GITHUB_OUTPUT
 
       - name: 发布固件
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: ${{ steps.meta.outputs.release }}
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: ${{ steps.meta.outputs.release_name }}
           body: |
-
             **编译信息**
             - 源码: chasey-dev/immortalwrt-mt798x-rebase
             - 分支: 25.12-dev
-
-          files: ${{ github.workspace }}/iwrt/upload/*.*
+            - 内核版本: ${{ steps.meta.outputs.kernel_version }}
+          files: '@${{ steps.filelist.outputs.filelist_path }}'
         env:
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
