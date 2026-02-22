@@ -39,8 +39,10 @@ jobs:
           filter: blob:none
 
       - name: Check Scripts
+        id: source_hash
         run: |
           find ./ -maxdepth 3 -type f -iregex ".*\(txt\|sh\)$" -exec dos2unix {} \; -exec chmod +x {} \;
+          echo "source_hash=$(git -C iwrt rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: 更新订阅源
         run: |
@@ -58,15 +60,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: iwrt/dl
-          key: ${{ runner.os }}-dl-${{ github.run_id }}
+          key: ${{ runner.os }}-dl-${{ hashFiles('iwrt/.config') }}-${{ steps.source_hash.outputs.source_hash }}
           restore-keys: |
+            ${{ runner.os }}-dl-${{ hashFiles('iwrt/.config') }}-
             ${{ runner.os }}-dl-
 
       - name: 缓存 ccache
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ${{ runner.os }}-ccache-${{ hashFiles('iwrt/.config', 'iwrt/toolchain/*') }}
+          key: ${{ runner.os }}-ccache-${{ hashFiles('iwrt/.config') }}
           restore-keys: |
             ${{ runner.os }}-ccache-
 
@@ -104,7 +107,7 @@ jobs:
             echo "kernel_version=unknown" >> $GITHUB_OUTPUT
           fi
 
-      - name: 生成发布文件列表 (作为逗号分隔字符串)
+      - name: 生成发布文件列表
         id: filelist_str
         run: |
 
@@ -113,14 +116,13 @@ jobs:
           ! -path "*/packages/*" \
           ! -name "*.json" \
           ! -name "bl2.bin" \
-          -printf '"iwrt/%P", ')
+          -printf 'iwrt/%P, ')
           FILE_STRING=${FILE_STRING%, }
           echo "files_string=$FILE_STRING" >> $GITHUB_OUTPUT
 
-      - name: 调试文件列表
+      - name: 调试文件列表字符串
         run: |
-          echo "File list contents:"
-          cat ${{ steps.filelist.outputs.filelist_path }}
+          echo "Files string: ${{ steps.filelist_str.outputs.files_string }}"
 
       - name: 发布固件
         uses: softprops/action-gh-release@v2
